@@ -23,6 +23,8 @@ Wiretap DMs stay local and are never exported to the Git-backed snapshot mirror.
 - imports classifiable Discord Desktop cache messages with `wiretap`, including proven DMs under `@me`
 - publishes and imports private Git-backed archive snapshots for org-wide read access
 - browses stored messages and local DMs in a terminal archive UI
+- exposes `metadata --json`, `status --json`, and `doctor --json` for local
+  launchers, automation, and CI
 - supports Git-only read mode with no Discord credentials on reader machines
 - generates backup README activity reports, with optional AI-written field notes
 - exposes read-only SQL for ad hoc analysis
@@ -170,6 +172,12 @@ discrawl tui --guild 123456789012345678 --channel general
 discrawl tui --dm
 discrawl --json tui --limit 50
 ```
+
+The terminal browser uses the shared crawlkit explorer. The left pane groups
+channels, people, or threads; the middle pane lists messages; the right pane
+shows the selected message, surrounding conversation, and thread detail. Mouse
+selection, right-click actions, sortable headers, and the local/remote footer
+follow the same interaction model as `gitcrawl tui`.
 
 ### `init`
 

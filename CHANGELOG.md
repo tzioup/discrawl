@@ -2,6 +2,21 @@
 
 ## 0.7.0 - Unreleased
 
+### Changes
+
+- Document the crawlkit-backed config/status/control, snapshot, mirror,
+  sync-state, output, and shared TUI surfaces now used on `main`.
+- Clarify that Discord bot sync, desktop wiretap parsing, DM privacy filters,
+  schema ownership, FTS/ranking, embeddings, and analytics remain app-owned.
+- Align terminal browser docs with the gitcrawl-style shared TUI model:
+  channel/person/thread groups, message rows, detail/thread panes, sorting,
+  mouse selection, right-click actions, and local/remote status chrome.
+
+### Maintenance
+
+- Document the read-only `metadata --json`, `status --json`, and
+  `doctor --json` control surface for launchers, automation, and CI checks.
+
 ### Fixes
 
 - `wiretap` now uses a fast default path for Discord Chromium cache imports: it scans cheap context files plus route-bearing HTTP cache entries, checkpoints file progress in batches, and leaves exhaustive historical cache archaeology behind `--full-cache` / `desktop.full_cache`.

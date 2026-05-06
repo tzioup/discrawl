@@ -2,6 +2,11 @@
 
 Discrawl can publish the SQLite archive as sharded, compressed NDJSON snapshots in a private Git repo, then auto-import that repo before local read commands. This gives readers org memory without Discord credentials.
 
+Snapshot packing/import and git mirror mechanics are shared through
+`crawlkit`. Discrawl still owns Discord-specific privacy policy: `@me` direct
+messages, wiretap sync state, and local-only desktop rows are excluded from
+published snapshots and are preserved locally on import.
+
 ## Publisher
 
 ```bash
