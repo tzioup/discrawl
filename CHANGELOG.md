@@ -14,6 +14,8 @@
 
 ### Maintenance
 
+- Add CodeQL analysis on pull requests, `main`, the CI preview branch, weekly
+  schedule, and manual dispatch.
 - Document the read-only `metadata --json`, `status --json`, and
   `doctor --json` control surface for launchers, automation, and CI checks.
 
