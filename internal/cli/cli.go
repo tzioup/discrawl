@@ -226,14 +226,6 @@ func (r *runtime) withLocalStoreLocked(autoShareUpdate bool, fn func() error) er
 	return r.withLocalStoreUpdateLocked(boolShareUpdateMode(autoShareUpdate), true, fn)
 }
 
-func (r *runtime) withLocalStoreDefault(autoShareUpdate bool, fn func() error) error {
-	return r.withLocalStoreUpdateLocked(boolShareUpdateMode(autoShareUpdate), false, fn)
-}
-
-func (r *runtime) withLocalStoreDefaultLocked(autoShareUpdate, lockDB bool, fn func() error) error {
-	return r.withLocalStoreUpdateLocked(boolShareUpdateMode(autoShareUpdate), lockDB, fn)
-}
-
 func (r *runtime) withLocalStoreRead(autoShareUpdate bool, fn func() error) error {
 	return r.withLocalStoreReadUpdate(boolShareUpdateMode(autoShareUpdate), fn)
 }

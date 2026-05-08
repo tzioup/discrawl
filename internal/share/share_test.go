@@ -776,7 +776,7 @@ func TestShareSmallHelpersAndValidation(t *testing.T) {
 	require.Equal(t, "blob", exportValue([]byte("blob")))
 	require.Equal(t, "plain", exportValue("plain"))
 	require.Equal(t, int64(42), importValue(json.Number("42")))
-	require.Equal(t, 3.5, importValue(json.Number("3.5")))
+	require.InDelta(t, 3.5, importValue(json.Number("3.5")), 0)
 	require.Equal(t, "nope", importValue(json.Number("nope")))
 	require.Equal(t, "plain", importValue("plain"))
 	require.Equal(t, "plain", stringValue("plain"))

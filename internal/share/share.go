@@ -464,7 +464,7 @@ func manifestFromGitHistory(ctx context.Context, repoPath string, generatedAt ti
 	if err != nil {
 		return Manifest{}, err
 	}
-	for _, hash := range strings.Fields(out) {
+	for hash := range strings.FieldsSeq(out) {
 		body, err := output(ctx, repoPath, "git", "show", hash+":"+ManifestName)
 		if err != nil {
 			continue
@@ -542,7 +542,7 @@ func gitTreeFiles(ctx context.Context, repoPath, rev string) (map[string]gitTree
 		return nil, err
 	}
 	files := map[string]gitTreeFile{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 5 {
 			continue
