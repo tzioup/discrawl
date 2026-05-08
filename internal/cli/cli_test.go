@@ -1053,6 +1053,63 @@ func TestSyncLockSerializesConcurrentRuns(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
+func TestReadCommandsDoNotWaitForSyncLock(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("sync lock timing is flaky on Windows")
+	}
+	ctx := context.Background()
+	dir := t.TempDir()
+	cfg := config.Default()
+	cfg.DBPath = filepath.Join(dir, "discrawl.db")
+	cfgPath := filepath.Join(dir, "config.toml")
+	require.NoError(t, config.Write(cfgPath, cfg))
+
+	s := seedCLIStore(t, cfg.DBPath)
+	require.NoError(t, s.Close())
+
+	firstRelease, err := acquireSyncLock(ctx, filepath.Join(dir, ".discrawl-sync.lock"))
+	require.NoError(t, err)
+	defer func() { _ = firstRelease() }()
+
+	for _, args := range [][]string{
+		{"--config", cfgPath, "search", "automatic"},
+		{"--config", cfgPath, "messages", "--channel", "general", "--last", "1"},
+		{"--config", cfgPath, "sql", "select count(*) as total from messages"},
+	} {
+		runCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+		var out bytes.Buffer
+		err := Run(runCtx, args, &out, &bytes.Buffer{})
+		cancel()
+		require.NoError(t, err, args)
+		require.NotEmpty(t, out.String(), args)
+	}
+}
+
+func TestReadCommandsMigrateOlderLocalStore(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	cfg := config.Default()
+	cfg.DBPath = filepath.Join(dir, "discrawl.db")
+	cfgPath := filepath.Join(dir, "config.toml")
+	require.NoError(t, config.Write(cfgPath, cfg))
+
+	s := seedCLIStore(t, cfg.DBPath)
+	_, err := s.DB().ExecContext(ctx, `pragma user_version = 1`)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	var out bytes.Buffer
+	require.NoError(t, Run(ctx, []string{"--config", cfgPath, "search", "automatic"}, &out, &bytes.Buffer{}))
+	require.Contains(t, out.String(), "automatic updates work")
+
+	reader, err := store.OpenReadOnly(ctx, cfg.DBPath)
+	require.NoError(t, err)
+	defer func() { _ = reader.Close() }()
+	var version int
+	require.NoError(t, reader.DB().QueryRowContext(ctx, `pragma user_version`).Scan(&version))
+	require.Equal(t, 2, version)
+}
+
 func seedCLIStore(t *testing.T, path string) *store.Store {
 	t.Helper()
 	ctx := context.Background()

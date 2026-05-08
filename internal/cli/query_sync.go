@@ -97,6 +97,21 @@ func hasBoolFlag(args []string, name string) bool {
 	return false
 }
 
+func boolFlagEnabled(args []string, name string) bool {
+	for _, arg := range args {
+		if arg == name {
+			return true
+		}
+		if raw, ok := strings.CutPrefix(arg, name+"="); ok {
+			switch strings.ToLower(strings.TrimSpace(raw)) {
+			case "1", "t", "true", "y", "yes", "on":
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func hasHelpArg(args []string) bool {
 	for _, arg := range args {
 		if arg == "help" || arg == "--help" || arg == "-h" {

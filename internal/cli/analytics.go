@@ -20,11 +20,11 @@ func (r *runtime) runAnalytics(args []string) error {
 	subArgs := args[1:]
 	switch subcommand {
 	case "quiet":
-		return r.withLocalStoreDefaultLocked(true, true, func() error {
+		return r.withLocalStoreRead(true, func() error {
 			return r.runAnalyticsQuiet(subArgs)
 		})
 	case "trends":
-		return r.withLocalStoreDefaultLocked(true, true, func() error {
+		return r.withLocalStoreRead(true, func() error {
 			return r.runAnalyticsTrends(subArgs)
 		})
 	default:

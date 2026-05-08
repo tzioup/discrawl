@@ -34,6 +34,29 @@ func (r *runtime) withSyncLock(fn func() error) error {
 	return fn()
 }
 
+func (r *runtime) tryWithSyncLock(fn func() error) (bool, error) {
+	if r.dbLockHeld {
+		return true, fn()
+	}
+	lockPath, err := r.syncLockPath()
+	if err != nil {
+		return false, err
+	}
+	release, locked, err := tryAcquireSyncLock(lockPath)
+	if err != nil || !locked {
+		return locked, err
+	}
+	r.dbLockHeld = true
+	r.lockStarted = r.nowUTC()
+	r.setSyncLockPhase("locked")
+	defer func() {
+		r.dbLockHeld = false
+		r.lockStarted = time.Time{}
+		_ = release()
+	}()
+	return true, fn()
+}
+
 func (r *runtime) setSyncLockPhase(phase string) {
 	if !r.dbLockHeld {
 		return

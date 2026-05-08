@@ -155,7 +155,7 @@ func (r *runtime) dispatch(rest []string) error {
 		return r.withLocalStoreLocked(false, func() error { return r.runWiretap(rest[1:]) })
 	case "search":
 		autoShareUpdate := !hasBoolFlag(rest[1:], "--dm")
-		return r.withLocalStoreDefaultLocked(autoShareUpdate, autoShareUpdate, func() error { return r.runSearch(rest[1:]) })
+		return r.withLocalStoreRead(autoShareUpdate, func() error { return r.runSearch(rest[1:]) })
 	case "tui":
 		if hasHelpArg(rest[1:]) {
 			return r.runTUI(rest[1:])
@@ -166,27 +166,30 @@ func (r *runtime) dispatch(rest []string) error {
 			return r.withServicesAutoLocked(true, true, true, func() error { return r.runMessages(rest[1:]) })
 		}
 		autoShareUpdate := !hasBoolFlag(rest[1:], "--dm")
-		return r.withLocalStoreDefaultLocked(autoShareUpdate, autoShareUpdate, func() error { return r.runMessages(rest[1:]) })
+		return r.withLocalStoreRead(autoShareUpdate, func() error { return r.runMessages(rest[1:]) })
 	case "digest":
-		return r.withLocalStoreDefaultLocked(true, true, func() error { return r.runDigest(rest[1:]) })
+		return r.withLocalStoreRead(true, func() error { return r.runDigest(rest[1:]) })
 	case "analytics":
 		return r.runAnalytics(rest[1:])
 	case "dms":
-		return r.withLocalStoreDefault(false, func() error { return r.runDirectMessages(rest[1:]) })
+		return r.withLocalStoreRead(false, func() error { return r.runDirectMessages(rest[1:]) })
 	case "mentions":
-		return r.withLocalStoreLocked(true, func() error { return r.runMentions(rest[1:]) })
+		return r.withLocalStoreRead(true, func() error { return r.runMentions(rest[1:]) })
 	case "embed":
 		return r.withLocalStoreLocked(true, func() error { return r.runEmbed(rest[1:]) })
 	case "sql":
-		return r.withLocalStoreLocked(true, func() error { return r.runSQL(rest[1:]) })
+		if boolFlagEnabled(rest[1:], "--unsafe") {
+			return r.withLocalStoreLocked(true, func() error { return r.runSQL(rest[1:]) })
+		}
+		return r.withLocalStoreRead(true, func() error { return r.runSQL(rest[1:]) })
 	case "members":
-		return r.withLocalStoreLocked(true, func() error { return r.runMembers(rest[1:]) })
+		return r.withLocalStoreRead(true, func() error { return r.runMembers(rest[1:]) })
 	case "channels":
-		return r.withLocalStoreLocked(true, func() error { return r.runChannels(rest[1:]) })
+		return r.withLocalStoreRead(true, func() error { return r.runChannels(rest[1:]) })
 	case "status":
 		return r.withLocalStoreReadOnly(func() error { return r.runStatus(rest[1:]) })
 	case "report":
-		return r.withLocalStoreLocked(true, func() error { return r.runReport(rest[1:]) })
+		return r.withLocalStoreRead(true, func() error { return r.runReport(rest[1:]) })
 	case "publish":
 		return r.withServicesAutoLocked(false, false, true, func() error { return r.runPublish(rest[1:]) })
 	case "subscribe":
@@ -220,6 +223,37 @@ func (r *runtime) withLocalStoreDefaultLocked(autoShareUpdate, lockDB bool, fn f
 	return r.withLocalStoreUpdateLocked(boolShareUpdateMode(autoShareUpdate), lockDB, fn)
 }
 
+func (r *runtime) withLocalStoreRead(autoShareUpdate bool, fn func() error) error {
+	return r.withLocalStoreReadUpdate(boolShareUpdateMode(autoShareUpdate), fn)
+}
+
+func (r *runtime) withLocalStoreReadUpdate(updateMode shareUpdateMode, fn func() error) error {
+	cfg, err := config.Load(r.configPath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return configErr(err)
+		}
+		cfg = config.Default()
+		if err := cfg.Normalize(); err != nil {
+			return configErr(err)
+		}
+	}
+	if err := config.EnsureRuntimeDirs(cfg); err != nil {
+		return configErr(err)
+	}
+	dbPath, err := config.ExpandPath(cfg.DBPath)
+	if err != nil {
+		return configErr(err)
+	}
+	r.cfg = cfg
+	if r.shouldAutoUpdateShare(updateMode) {
+		if err := r.autoUpdateShareIfLockAvailable(dbPath, updateMode); err != nil {
+			return err
+		}
+	}
+	return r.openLocalStoreReadOnly(dbPath, fn)
+}
+
 func (r *runtime) withLocalStoreUpdateLocked(updateMode shareUpdateMode, lockDB bool, fn func() error) error {
 	cfg, err := config.Load(r.configPath)
 	if err != nil {
@@ -245,6 +279,38 @@ func (r *runtime) withLocalStoreUpdateLocked(updateMode shareUpdateMode, lockDB 
 		})
 	}
 	return r.openLocalStore(dbPath, updateMode, fn)
+}
+
+func (r *runtime) shouldAutoUpdateShare(mode shareUpdateMode) bool {
+	return os.Getenv("DISCRAWL_NO_AUTO_UPDATE") != "1" &&
+		r.cfg.ShareEnabled() &&
+		(mode == shareUpdateForce || mode == shareUpdateAuto || (mode == shareUpdateConfigured && r.cfg.Share.AutoUpdate))
+}
+
+func (r *runtime) autoUpdateShareIfLockAvailable(dbPath string, updateMode shareUpdateMode) error {
+	locked, err := r.tryWithSyncLock(func() error {
+		storeFactory := r.openStore
+		if storeFactory == nil {
+			storeFactory = store.Open
+		}
+		var openErr error
+		r.store, openErr = storeFactory(r.ctx, dbPath)
+		if openErr != nil {
+			return dbErr(openErr)
+		}
+		defer func() {
+			_ = r.store.Close()
+			r.store = nil
+		}()
+		return r.autoUpdateShare(updateMode)
+	})
+	if err != nil {
+		return err
+	}
+	if !locked {
+		r.logger.Info("share update skipped; sync lock is held")
+	}
+	return nil
 }
 
 func (r *runtime) openLocalStore(dbPath string, updateMode shareUpdateMode, fn func() error) error {
@@ -288,6 +354,50 @@ func (r *runtime) withLocalStoreReadOnly(fn func() error) error {
 		if errors.Is(openErr, os.ErrNotExist) {
 			r.store = nil
 			return fn()
+		}
+		return dbErr(openErr)
+	}
+	defer func() { _ = r.store.Close() }()
+	return fn()
+}
+
+func (r *runtime) openLocalStoreReadOnly(dbPath string, fn func() error) error {
+	var openErr error
+	r.store, openErr = store.OpenReadOnly(r.ctx, dbPath)
+	if openErr != nil {
+		if errors.Is(openErr, os.ErrNotExist) {
+			storeFactory := r.openStore
+			if storeFactory == nil {
+				storeFactory = store.Open
+			}
+			r.store, openErr = storeFactory(r.ctx, dbPath)
+			if openErr == nil {
+				defer func() { _ = r.store.Close() }()
+				return fn()
+			}
+		}
+		if errors.Is(openErr, store.ErrSchemaVersionMismatch) {
+			if err := r.withSyncLock(func() error {
+				storeFactory := r.openStore
+				if storeFactory == nil {
+					storeFactory = store.Open
+				}
+				var migrateErr error
+				r.store, migrateErr = storeFactory(r.ctx, dbPath)
+				if migrateErr != nil {
+					return dbErr(migrateErr)
+				}
+				closeErr := r.store.Close()
+				r.store = nil
+				return closeErr
+			}); err != nil {
+				return err
+			}
+			r.store, openErr = store.OpenReadOnly(r.ctx, dbPath)
+			if openErr == nil {
+				defer func() { _ = r.store.Close() }()
+				return fn()
+			}
 		}
 		return dbErr(openErr)
 	}

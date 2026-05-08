@@ -51,3 +51,29 @@ func acquireSyncLock(ctx context.Context, path string) (func() error, error) {
 		}
 	}
 }
+
+func tryAcquireSyncLock(path string) (func() error, bool, error) {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, false, fmt.Errorf("open sync lock: %w", err)
+	}
+	err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	if err != nil {
+		_ = file.Close()
+		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("acquire sync lock: %w", err)
+	}
+	_, _ = file.Seek(0, 0)
+	_ = file.Truncate(0)
+	_, _ = fmt.Fprintf(file, "pid=%d\n", os.Getpid())
+	return func() error {
+		unlockErr := unix.Flock(int(file.Fd()), unix.LOCK_UN)
+		closeErr := file.Close()
+		if unlockErr != nil {
+			return unlockErr
+		}
+		return closeErr
+	}, true, nil
+}

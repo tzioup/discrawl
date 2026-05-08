@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"strconv"
@@ -17,6 +18,8 @@ const (
 	memberFTSVersion   = "1"
 	storeSchemaVersion = 2
 )
+
+var ErrSchemaVersionMismatch = errors.New("database schema version mismatch")
 
 type Store struct {
 	db   *sql.DB
@@ -135,7 +138,7 @@ func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
 		return nil, err
 	} else if version != storeSchemaVersion {
 		_ = base.Close()
-		return nil, fmt.Errorf("database schema version mismatch: got %d want %d", version, storeSchemaVersion)
+		return nil, fmt.Errorf("%w: got %d want %d", ErrSchemaVersionMismatch, version, storeSchemaVersion)
 	}
 	return store, nil
 }
@@ -179,7 +182,7 @@ func (s *Store) migrate(ctx context.Context) error {
 	if version, err := s.schemaVersion(ctx); err != nil {
 		return err
 	} else if version != storeSchemaVersion {
-		return fmt.Errorf("database schema version mismatch: got %d want %d", version, storeSchemaVersion)
+		return fmt.Errorf("%w: got %d want %d", ErrSchemaVersionMismatch, version, storeSchemaVersion)
 	}
 	if err := s.applyQueryIndexMigration(ctx); err != nil {
 		return err
