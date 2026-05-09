@@ -68,14 +68,18 @@ If SQLite reports busy/locked, check for stray `discrawl` processes before retry
 3. Prefer CLI search/messages for slices; use read-only SQL for exact counts.
 4. Report absolute date spans, counts, channel/DM names, and known gaps.
 
+Use root `discrawl --help` for command list. Subcommand `--help` currently only
+returns `flag: help requested`, and read commands may auto-update the git share
+unless `DISCRAWL_NO_AUTO_UPDATE=1` is set.
+
 Common commands:
 
 ```bash
-discrawl search "query"
+DISCRAWL_NO_AUTO_UPDATE=1 discrawl search --limit 20 "query"
 discrawl messages --channel '#maintainers' --days 7 --all
 discrawl dms --last 20
 discrawl tui --dm
-discrawl sql "select count(*) from messages;"
+DISCRAWL_NO_AUTO_UPDATE=1 discrawl --json sql "select count(*) from messages;"
 ```
 
 ## SQL
@@ -87,9 +91,9 @@ args or stdin, and supports `--json` for agent parsing.
 Useful examples:
 
 ```bash
-discrawl --json sql "select count(*) as messages from messages;"
-discrawl --json sql "select coalesce(nullif(c.name, ''), m.channel_id) as channel, count(*) as messages from messages m left join channels c on c.id = m.channel_id group by m.channel_id order by messages desc limit 20;"
-discrawl --json sql "select coalesce(nullif(mm.display_name, ''), nullif(mm.global_name, ''), nullif(mm.username, ''), m.author_id) as author, count(*) as messages from messages m left join members mm on mm.guild_id = m.guild_id and mm.user_id = m.author_id group by m.guild_id, m.author_id order by messages desc limit 20;"
+DISCRAWL_NO_AUTO_UPDATE=1 discrawl --json sql "select count(*) as messages from messages;"
+DISCRAWL_NO_AUTO_UPDATE=1 discrawl --json sql "select coalesce(nullif(c.name, ''), m.channel_id) as channel, count(*) as messages from messages m left join channels c on c.id = m.channel_id group by m.channel_id order by messages desc limit 20;"
+DISCRAWL_NO_AUTO_UPDATE=1 discrawl --json sql "select coalesce(nullif(mm.display_name, ''), nullif(mm.global_name, ''), nullif(mm.username, ''), m.author_id) as author, count(*) as messages from messages m left join members mm on mm.guild_id = m.guild_id and mm.user_id = m.author_id group by m.guild_id, m.author_id order by messages desc limit 20;"
 ```
 
 Never use `--unsafe --confirm` unless the user explicitly asks for a database
@@ -120,5 +124,5 @@ Then run targeted CLI smoke for the touched surface, for example:
 ```bash
 discrawl doctor
 discrawl status --json
-discrawl search "test" --limit 5
+DISCRAWL_NO_AUTO_UPDATE=1 discrawl search --limit 5 "test"
 ```
