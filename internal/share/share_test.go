@@ -175,6 +175,27 @@ func TestExportMigratesLegacyRawMediaFilesToGzip(t *testing.T) {
 	require.FileExists(t, filepath.Join(repo, filepath.FromSlash(compressedMediaManifestPath(mediaPath))))
 }
 
+func TestExportRejectsMismatchedMediaHash(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	src := seedStore(t, filepath.Join(dir, "src.db"))
+	defer func() { _ = src.Close() }()
+	body := []byte("cached-media")
+	sum := sha256.Sum256(body)
+	hash := hex.EncodeToString(sum[:])
+	mediaPath := filepath.ToSlash(filepath.Join("attachments", hash[:2], hash+"-file.png"))
+	require.NoError(t, addCachedAttachment(ctx, src, mediaPath, strings.Repeat("0", 64), int64(len(body))))
+	srcCache := filepath.Join(dir, "src-cache")
+	srcFile, err := media.LocalPath(srcCache, mediaPath)
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(srcFile), 0o755))
+	require.NoError(t, os.WriteFile(srcFile, body, 0o600))
+
+	_, err = Export(ctx, src, Options{RepoPath: filepath.Join(dir, "share"), CacheDir: srcCache, Branch: "main", IncludeMedia: true})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "media hash mismatch")
+}
+
 func TestExportRejectsOverlappingMediaRoots(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -367,6 +388,37 @@ func TestImportMediaSupportsLegacyRawManifestFiles(t *testing.T) {
 	require.Equal(t, body, got)
 }
 
+func TestImportMediaSupportsCompressedManifestFiles(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "share")
+	cacheDir := filepath.Join(dir, "cache")
+	mediaPath := "attachments/aa/file.png"
+	body := []byte("compressed body")
+	sourceRaw := filepath.Join(dir, "source.png")
+	require.NoError(t, os.WriteFile(sourceRaw, body, 0o600))
+	source, err := compressedMediaRepoPath(repo, mediaPath)
+	require.NoError(t, err)
+	require.NoError(t, copyGzipFile(source, sourceRaw))
+	compressedHash, err := fileSHA256(source)
+	require.NoError(t, err)
+
+	copied, err := importMedia(ctx, Options{RepoPath: repo, CacheDir: cacheDir}, &MediaManifest{
+		Files: []snapshot.FileManifest{{Path: compressedMediaManifestPath(mediaPath), SHA256: compressedHash}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, copied)
+	target, err := media.LocalPath(cacheDir, mediaPath)
+	require.NoError(t, err)
+	require.Equal(t, body, mustReadFile(t, target))
+
+	copied, err = importMedia(ctx, Options{RepoPath: repo, CacheDir: cacheDir}, &MediaManifest{
+		Files: []snapshot.FileManifest{{Path: compressedMediaManifestPath(mediaPath), SHA256: compressedHash}},
+	})
+	require.NoError(t, err)
+	require.Zero(t, copied)
+}
+
 func TestImportMediaRejectsInvalidAndMismatchedFiles(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -512,6 +564,20 @@ func TestMediaPathValidationHelpers(t *testing.T) {
 	require.ErrorIs(t, err, errUnsafeMediaPath)
 	require.True(t, pathsOverlap(root, filepath.Join(root, "attachments")))
 	require.False(t, pathsOverlap(root, filepath.Join(dir, "other")))
+	require.NoError(t, resetCompressedMediaExport(dir))
+	_, err = os.Stat(root)
+	require.True(t, os.IsNotExist(err))
+
+	raw, compressed, ok := mediaPathFromManifest("media/attachments/aa/file.png.gz")
+	require.True(t, ok)
+	require.True(t, compressed)
+	require.Equal(t, "attachments/aa/file.png", raw)
+	raw, compressed, ok = mediaPathFromManifest("media/attachments/aa/file.png")
+	require.True(t, ok)
+	require.False(t, compressed)
+	require.Equal(t, "attachments/aa/file.png", raw)
+	_, _, ok = mediaPathFromManifest("tables/messages.jsonl.gz")
+	require.False(t, ok)
 }
 
 func TestMediaCopyHashHelpers(t *testing.T) {
@@ -530,6 +596,23 @@ func TestMediaCopyHashHelpers(t *testing.T) {
 	require.True(t, sameFileHash(target, hash))
 	require.False(t, sameFileHash(filepath.Join(dir, "missing.bin"), hash))
 	require.Error(t, copyFile(filepath.Join(dir, "other.bin"), filepath.Join(dir, "missing.bin")))
+
+	gzipTarget := filepath.Join(dir, "nested", "target.bin.gz")
+	require.NoError(t, copyGzipFile(gzipTarget, source))
+	require.NotEqual(t, body, mustReadFile(t, gzipTarget))
+	gzipHash, err := gzipFileSHA256(gzipTarget)
+	require.NoError(t, err)
+	require.Equal(t, hash, gzipHash)
+	restored := filepath.Join(dir, "restored.bin")
+	require.NoError(t, restoreGzipFile(restored, gzipTarget))
+	require.Equal(t, body, mustReadFile(t, restored))
+	_, err = gzipFileSHA256(source)
+	require.Error(t, err)
+	_, err = gzipFileSHA256(filepath.Join(dir, "missing.gz"))
+	require.Error(t, err)
+	require.Error(t, copyGzipFile(filepath.Join(dir, "missing.gz"), filepath.Join(dir, "missing-source.bin")))
+	require.Error(t, restoreGzipFile(filepath.Join(dir, "bad.bin"), source))
+	require.Error(t, restoreGzipFile(filepath.Join(dir, "bad.bin"), filepath.Join(dir, "missing.gz")))
 }
 
 func TestPublicPermissionHelpers(t *testing.T) {
@@ -2097,6 +2180,13 @@ func mustReadManifest(t *testing.T, repo string) Manifest {
 	manifest, err := ReadManifest(repo)
 	require.NoError(t, err)
 	return manifest
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return body
 }
 
 func tableEntry(t *testing.T, manifest Manifest, name string) TableManifest {

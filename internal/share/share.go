@@ -1108,8 +1108,8 @@ func mediaPathFromManifest(path string) (string, bool, bool) {
 	if !ok {
 		return "", false, false
 	}
-	if strings.HasSuffix(mediaPath, ".gz") {
-		return strings.TrimSuffix(mediaPath, ".gz"), true, true
+	if rawPath, ok := strings.CutSuffix(mediaPath, ".gz"); ok {
+		return rawPath, true, true
 	}
 	return mediaPath, false, true
 }
@@ -1171,20 +1171,27 @@ func regularMediaFile(root, path, label string) (os.FileInfo, error) {
 }
 
 func copyFile(target, source string) error {
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
-	}
 	src, err := os.Open(source) // #nosec G304 -- source is constrained by media path helpers.
 	if err != nil {
 		return err
 	}
 	defer func() { _ = src.Close() }()
+	return writeAtomicFile(target, func(tmp *os.File) error {
+		_, err := io.Copy(tmp, src)
+		return err
+	})
+}
+
+func writeAtomicFile(target string, write func(*os.File) error) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(target), ".copy-*")
 	if err != nil {
 		return err
 	}
 	tmpPath := tmp.Name()
-	if _, err := io.Copy(tmp, src); err != nil {
+	if err := write(tmp); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
 		return err
@@ -1201,51 +1208,25 @@ func copyFile(target, source string) error {
 }
 
 func copyGzipFile(target, source string) error {
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
-	}
 	src, err := os.Open(source) // #nosec G304 -- source is constrained by media path helpers.
 	if err != nil {
 		return err
 	}
 	defer func() { _ = src.Close() }()
-	tmp, err := os.CreateTemp(filepath.Dir(target), ".copy-*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	gz, err := gzip.NewWriterLevel(tmp, gzip.BestCompression)
-	if err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if _, err := io.Copy(gz, src); err != nil {
-		_ = gz.Close()
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if err := gz.Close(); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if err := os.Rename(tmpPath, target); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	return nil
+	return writeAtomicFile(target, func(tmp *os.File) error {
+		gz, err := gzip.NewWriterLevel(tmp, gzip.BestCompression)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(gz, src); err != nil {
+			_ = gz.Close()
+			return err
+		}
+		return gz.Close()
+	})
 }
 
 func restoreGzipFile(target, source string) error {
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return err
-	}
 	src, err := os.Open(source) // #nosec G304 -- source is constrained by media path helpers.
 	if err != nil {
 		return err
@@ -1256,25 +1237,10 @@ func restoreGzipFile(target, source string) error {
 		return err
 	}
 	defer func() { _ = gz.Close() }()
-	tmp, err := os.CreateTemp(filepath.Dir(target), ".copy-*")
-	if err != nil {
+	return writeAtomicFile(target, func(tmp *os.File) error {
+		_, err := io.Copy(tmp, gz)
 		return err
-	}
-	tmpPath := tmp.Name()
-	if _, err := io.Copy(tmp, gz); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if err := os.Rename(tmpPath, target); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	return nil
+	})
 }
 
 func fileSHA256(path string) (string, error) {

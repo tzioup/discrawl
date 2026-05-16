@@ -86,6 +86,14 @@ func TestBuildDigest(t *testing.T) {
 	})
 }
 
+func TestHumanDuration(t *testing.T) {
+	require.Equal(t, "0", humanDuration(0))
+	require.Equal(t, "0", humanDuration(-time.Second))
+	require.Equal(t, "2d", humanDuration(48*time.Hour))
+	require.Equal(t, "3h", humanDuration(3*time.Hour))
+	require.Equal(t, "1h30m0s", humanDuration(90*time.Minute))
+}
+
 func seedDigestStore(t *testing.T, ctx context.Context) (*store.Store, time.Time) {
 	t.Helper()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "discrawl.db"))
