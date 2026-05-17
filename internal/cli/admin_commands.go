@@ -80,10 +80,15 @@ func (r *runtime) runInit(args []string) error {
 		return authErr(err)
 	}
 	cfg.GuildIDs = make([]string, 0, len(guilds))
+	discovered := make(map[string]struct{}, len(guilds))
 	for _, guild := range guilds {
 		cfg.GuildIDs = append(cfg.GuildIDs, guild.ID)
+		discovered[guild.ID] = struct{}{}
 	}
 	if *guildID != "" {
+		if _, ok := discovered[*guildID]; !ok {
+			return usageErr(fmt.Errorf("guild %s is not accessible", *guildID))
+		}
 		cfg.DefaultGuildID = *guildID
 	}
 	if cfg.DefaultGuildID == "" && len(cfg.GuildIDs) == 1 {

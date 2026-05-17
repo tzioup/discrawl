@@ -98,6 +98,9 @@ func (s *Syncer) Sync(ctx context.Context, opts SyncOptions) (SyncStats, error) 
 	if err != nil {
 		return SyncStats{}, fmt.Errorf("list guilds: %w", err)
 	}
+	if missing := missingGuildIDs(guilds, opts.GuildIDs); len(missing) > 0 {
+		return SyncStats{}, fmt.Errorf("requested guilds not accessible: %s", strings.Join(missing, ", "))
+	}
 	targets := selectGuilds(guilds, opts.GuildIDs)
 	stats := SyncStats{}
 	for _, guild := range targets {

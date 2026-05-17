@@ -2606,6 +2606,31 @@ func TestRunInitWritesDiscoveredGuildConfig(t *testing.T) {
 	require.Contains(t, rt.stdout.(*bytes.Buffer).String(), "g2")
 }
 
+func TestRunInitRejectsUnknownDefaultGuild(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.toml")
+	dbPath := filepath.Join(dir, "discrawl.db")
+	t.Setenv(config.DefaultTokenEnv, "env-token")
+
+	fakeSync := &fakeSyncService{discovered: []*discordgo.UserGuild{{ID: "g1"}}}
+	rt := &runtime{
+		ctx:        ctx,
+		configPath: cfgPath,
+		stdout:     &bytes.Buffer{},
+		stderr:     &bytes.Buffer{},
+		logger:     discardLogger(),
+		newDiscord: func(config.Config) (discordClient, error) { return &fakeDiscordClient{}, nil },
+		newSyncer: func(syncer.Client, *store.Store, *slog.Logger) syncService {
+			return fakeSync
+		},
+	}
+
+	err := rt.runInit([]string{"--db", dbPath, "--guild", "missing"})
+	require.Equal(t, 2, ExitCode(err))
+	require.ErrorContains(t, err, "guild missing is not accessible")
+}
+
 func TestRunMembersShowUsesDefaultGuildForAmbiguousQuery(t *testing.T) {
 	t.Parallel()
 

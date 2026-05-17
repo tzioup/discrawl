@@ -382,6 +382,27 @@ func TestSyncMemberRefreshTimeoutStillMarksSuccess(t *testing.T) {
 	require.NotEmpty(t, lastSync)
 }
 
+func TestSyncRejectsUnknownRequestedGuild(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "discrawl.db"))
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+
+	client := &fakeClient{
+		guilds: []*discordgo.UserGuild{{ID: "g1", Name: "Guild"}},
+	}
+	svc := New(client, s, nil)
+
+	stats, err := svc.Sync(ctx, SyncOptions{GuildIDs: []string{"missing"}})
+	require.ErrorContains(t, err, "requested guilds not accessible: missing")
+	require.Zero(t, stats)
+	lastSync, err := s.GetSyncState(ctx, "sync:last_success")
+	require.NoError(t, err)
+	require.Empty(t, lastSync)
+}
+
 func TestSyncSkipsMemberRefreshWhenExistingSnapshotPresent(t *testing.T) {
 	t.Parallel()
 

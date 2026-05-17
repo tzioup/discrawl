@@ -243,3 +243,31 @@ func selectGuilds(all []*discordgo.UserGuild, requested []string) []*discordgo.U
 	}
 	return out
 }
+
+func missingGuildIDs(all []*discordgo.UserGuild, requested []string) []string {
+	if len(requested) == 0 {
+		return nil
+	}
+	available := make(map[string]struct{}, len(all))
+	for _, guild := range all {
+		if guild != nil && guild.ID != "" {
+			available[guild.ID] = struct{}{}
+		}
+	}
+	seen := map[string]struct{}{}
+	var missing []string
+	for _, id := range requested {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		if _, ok := available[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	return missing
+}
