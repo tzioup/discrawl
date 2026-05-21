@@ -21,7 +21,7 @@ func ResolveDiscordToken(cfg Config) (TokenResolution, error) {
 	case "env":
 		envToken := NormalizeBotToken(os.Getenv(cfg.Discord.TokenEnv))
 		if envToken != "" {
-			return TokenResolution{Token: envToken, Source: "env", Path: cfg.Discord.TokenEnv}, nil
+			return TokenResolution{Token: envToken, TokenType: cfg.Discord.TokenType, Source: "env", Path: cfg.Discord.TokenEnv}, nil
 		}
 		token, err := resolveDiscordTokenFromKeyring(cfg)
 		if err == nil {
@@ -51,9 +51,10 @@ func resolveDiscordTokenFromKeyring(cfg Config) (TokenResolution, error) {
 		return TokenResolution{}, errors.New("keyring item is empty")
 	}
 	return TokenResolution{
-		Token:  token,
-		Source: "keyring",
-		Path:   cfg.Discord.TokenKeyringService + "/" + cfg.Discord.TokenKeyringAccount,
+		Token:     token,
+		TokenType: cfg.Discord.TokenType,
+		Source:    "keyring",
+		Path:      cfg.Discord.TokenKeyringService + "/" + cfg.Discord.TokenKeyringAccount,
 	}, nil
 }
 

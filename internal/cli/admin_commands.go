@@ -60,7 +60,7 @@ func (r *runtime) runInit(args []string) error {
 	discordFactory := r.newDiscord
 	if discordFactory == nil {
 		discordFactory = func(cfg config.Config) (discordClient, error) {
-			return discord.New(token.Token)
+			return discord.New(token.Token, token.TokenType)
 		}
 	}
 	client, err := discordFactory(cfg)
@@ -537,7 +537,7 @@ func (r *runtime) runDoctor(args []string) error {
 		discordFactory := r.newDiscord
 		if discordFactory == nil {
 			discordFactory = func(cfg config.Config) (discordClient, error) {
-				return discord.New(token.Token)
+				return discord.New(token.Token, token.TokenType)
 			}
 		}
 		client, clientErr := discordFactory(cfg)

@@ -36,6 +36,7 @@ type Config struct {
 
 type DiscordConfig struct {
 	TokenSource         string `toml:"token_source"`
+	TokenType           string `toml:"token_type"`
 	TokenEnv            string `toml:"token_env"`
 	TokenKeyringService string `toml:"token_keyring_service"`
 	TokenKeyringAccount string `toml:"token_keyring_account"`
@@ -90,9 +91,10 @@ type EmbeddingsConfig struct {
 }
 
 type TokenResolution struct {
-	Token  string
-	Source string
-	Path   string
+	Token     string
+	TokenType string
+	Source    string
+	Path      string
 }
 
 var appConfig = crawlconfig.App{
@@ -122,6 +124,7 @@ func Default() Config {
 		DefaultGuildID: "",
 		Discord: DiscordConfig{
 			TokenSource:         "env",
+			TokenType:           "bot",
 			TokenEnv:            DefaultTokenEnv,
 			TokenKeyringService: DefaultTokenKeyringService,
 			TokenKeyringAccount: DefaultTokenKeyringAccount,

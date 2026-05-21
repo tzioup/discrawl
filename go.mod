@@ -2,6 +2,8 @@ module github.com/openclaw/discrawl
 
 go 1.26.3
 
+replace github.com/bwmarrin/discordgo v0.29.0 => github.com/tzioup/discordgo v0.29.1-0.20260521030141-88bbc12aa5fd
+
 require (
 	github.com/alecthomas/kong v1.15.0
 	github.com/bwmarrin/discordgo v0.29.0

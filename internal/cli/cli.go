@@ -562,7 +562,7 @@ func (r *runtime) ensureDiscordServices() error {
 			if err != nil {
 				return nil, err
 			}
-			return discord.New(token.Token)
+			return discord.New(token.Token, token.TokenType)
 		}
 	}
 	client, err := discordFactory(r.cfg)

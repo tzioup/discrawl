@@ -29,8 +29,16 @@ type Client struct {
 	tailHandlerTimeout time.Duration
 }
 
-func New(token string) (*Client, error) {
-	session, err := discordgo.New("Bot " + token)
+func New(token string, tokenType ...string) (*Client, error) {
+	tt := "bot"
+	if len(tokenType) > 0 && tokenType[0] != "" {
+		tt = tokenType[0]
+	}
+	authToken := token
+	if tt == "bot" {
+		authToken = "Bot " + token
+	}
+	session, err := discordgo.New(authToken)
 	if err != nil {
 		return nil, fmt.Errorf("create discord session: %w", err)
 	}
